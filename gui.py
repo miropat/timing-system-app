@@ -33,10 +33,10 @@ class ArduinoApp:
         ctk.set_default_color_theme("dark-blue")
 
         self.frame = ctk.CTkFrame(self.root)
-        self.frame.pack(pady=20, padx=20, fill="both", expand=True)
+        self.frame.pack(pady=30, padx=30, fill="both", expand=True)
 
         self.label = ctk.CTkLabel(self.frame, text="Waiting for data...")
-        self.label.pack(pady=20)
+        self.label.pack(pady=30)
 
         self.connection_status_label = ctk.CTkLabel(self.frame, textvariable=self.connection_status)
         self.connection_status_label.pack(pady=10)
@@ -62,32 +62,29 @@ class ArduinoApp:
         self.ready_button = ctk.CTkButton(self.frame, text="Start", command=self.send_ready_signal)
         self.ready_button.pack(pady=10)
 
-        self.reset_button = ctk.CTkButton(self.frame, text="Reset", command=self.send_reset_signal)
-        self.reset_button.pack(pady=10)
-
         self.save_button = ctk.CTkButton(self.frame, text="Save to Database", command=self.save_to_db)
         self.save_button.pack(pady=10)
 
         self.show_button = ctk.CTkButton(self.frame, text="Show Saved Timings", command=self.show_data)
         self.show_button.pack(pady=10)
 
-        self.data_viewer = ctk.CTkTextbox(self.frame, height=20, width=100)
-        self.data_viewer.pack(pady=10)
+        # self.data_viewer = ctk.CTkTextbox(self.frame, height=20, width=150)
+        # self.data_viewer.pack(pady=10)
 
-        self.scrollbar = ctk.CTkScrollbar(self.frame, command=self.data_viewer.yview)
-        self.scrollbar.pack(side=ctk.RIGHT, fill=ctk.Y)
-        self.data_viewer.configure(yscrollcommand=self.scrollbar.set)
+        # self.scrollbar = ctk.CTkScrollbar(self.frame, command=self.data_viewer.yview)
+        # self.scrollbar.pack(side=ctk.RIGHT, fill=ctk.Y)
+        # self.data_viewer.configure(yscrollcommand=self.scrollbar.set)
 
         # Add input field and buttons for athlete management
 
         self.add_athlete_button = ctk.CTkButton(self.frame, text="Add Athlete", command=self.add_athlete)
-        self.add_athlete_button.pack(pady=5)
+        self.add_athlete_button.pack(pady=10)
 
         self.edit_athlete_button = ctk.CTkButton(self.frame, text="Edit Athlete", command=self.edit_athlete)
-        self.edit_athlete_button.pack(pady=5)
+        self.edit_athlete_button.pack(pady=10)
 
         self.delete_athlete_button = ctk.CTkButton(self.frame, text="Delete Athlete", command=self.delete_athlete)
-        self.delete_athlete_button.pack(pady=5)
+        self.delete_athlete_button.pack(pady=10)
 
     def setup_serial(self):
         try:
@@ -103,21 +100,15 @@ class ArduinoApp:
     def ready_to_start(self, event=None):
         self.send_ready_signal()
 
-    def send_ready_signal(self):
+    def send_ready_signal(self): #Works as a reset signal aswell
         if self.ser:
             self.ser.write(b'R')
-            print("Sent ready signal to Arduino")
+            print("Sent ready/reset signal to Arduino")
         else:
             print("Error: Serial connection not established")
             self.label.configure(text="Error: Serial connection not established")
 
-    def send_reset_signal(self):
-        if self.ser:
-            self.ser.write(b'X')
-            print("Sent reset signal to Arduino")
-        else:
-            print("Error: Serial connection not established")
-            self.label.configure(text="Error: Serial connection not established")
+
 
     def read_from_serial(self):
         while True:
@@ -152,7 +143,10 @@ class ArduinoApp:
         self.data_viewer.see(ctk.END)
 
     def save_to_db(self):
-        if self.data:
+            # Check if there is any valid data to save
+        valid_data = any(isinstance(item[0], float) for item in self.data)
+
+        if valid_data:
             selected_athlete = self.athlete_var.get()  # Get the selected athlete from the dropdown
             try:
                 conn = sqlite3.connect('timing_data.db')
@@ -183,6 +177,13 @@ class ArduinoApp:
                 print(f"SQLite erro while saving data: {e}")
         else:
             print("No data to save")
+
+            # Check if there is any valid data left to enable the save_button
+        if any(isinstance(item[0], float) for item in self.data):
+            self.save_button.configure(state=ctk.NORMAL)
+        else:
+            self.save_button.configure(state=ctk.DISABLED)
+
 
     def fetch_athletes(self):
         try:
@@ -241,8 +242,18 @@ class ArduinoApp:
         try:
             conn = sqlite3.connect('timing_data.db')
             c = conn.cursor()
-            c.execute('SELECT * FROM timings')
-            rows = c.fetchall()
+
+            selected_athlete = self.athlete_var.get()
+            if selected_athlete:
+                c.execute('SELECT id FROM athletes WHERE name = ?', (selected_athlete,))
+                athlete_id = c.fetchone()[0]
+
+                # Fetch timings for the selected athlete only
+                c.execute('SELECT * FROM timings WHERE athlete_id = ?', (athlete_id))
+                rows = c.fetchall()
+            else:
+                rows = []
+
             conn.close()
             print(f"Fetched data: {rows}")
             return rows
@@ -255,7 +266,7 @@ class ArduinoApp:
         if rows:
             display_text = "\n".join([f"ID: {row[0]}, Duration: {row[1]} seconds, Timestamp: {row[2]}" for row in rows])
         else:
-            display_text = "No data found"
+            display_text = "No data found for the selected athlete"
         self.label.configure(text=display_text)
         self.data_viewer.delete('1.0', ctk.END)
         self.data_viewer.insert(ctk.END, display_text + "\n")
