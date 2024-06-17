@@ -77,6 +77,20 @@ class ArduinoApp:
         self.scrollbar.pack(side=ctk.RIGHT, fill=ctk.Y)
         self.data_viewer.configure(yscrollcommand=self.scrollbar.set)
 
+        # Add input field and buttons for athlete management
+        self.new_athlete_var = ctk.StringVar()
+        self.new_athlete_entry = ctk.CTkEntry(self.frame, textvariable=self.new_athlete_var, placeholder_text="Enter Athlete Name")
+        self.new_athlete_entry.pack(pady=5)
+
+        self.add_athlete_button = ctk.CTkButton(self.frame, text="Add Athlete", command=self.add_athlete)
+        self.add_athlete_button.pack(pady=5)
+
+        self.edit_athlete_button = ctk.CTkButton(self.frame, text="Edit Athlete", command=self.edit_athlete)
+        self.edit_athlete_button.pack(pady=5)
+
+        self.delete_athlete_button = ctk.CTkButton(self.frame, text="Delete Athlete", command=self.delete_athlete)
+        self.delete_athlete_button.pack(pady=5)  
+
     def setup_serial(self):
         try:
             self.ser = serial.Serial('COM5', 9600, timeout=1)
@@ -184,6 +198,45 @@ class ArduinoApp:
             print(f"SQLite error while fetching athletes: {e}")
             return []
 
+
+    def add_athlete(self):
+        new_athlete = self.new_athlete_var.get()
+        if new_athlete:
+            conn = sqlite3.connect('timing_data.db')
+            c = conn.cursor()
+            c.execute('INSERT INTO athletes (name) VALUES (?)', (new_athlete,))
+            conn.commit()
+            conn.close()
+            self.refresh_athlete_list()
+            self.new_athlete_var.set("")
+
+    def edit_athlete(self):
+        selected_athlete = self.athlete_var.get()
+        new_name = self.new_athlete_var.get()
+        if selected_athlete and new_name:
+            conn = sqlite3.connect('timing_data.db')
+            c = conn.cursor()
+            c.execute('UPDATE athletes SET name = ? WHERE name = ?', (new_name, selected_athlete))
+            conn.commit()
+            conn.close()
+            self.refresh_athlete_list()
+            self.new_athlete_var.set("")
+
+    def delete_athlete(self):
+        selected_athlete = self.athlete_var.get()
+        if selected_athlete:
+            conn = sqlite3.connect('timing_data.db')
+            c = conn.cursor()
+            c.execute('DELETE FROM athletes WHERE name = ?', (selected_athlete,))
+            conn.commit()
+            conn.close()
+            self.refresh_athlete_list()
+
+    def refresh_athlete_list(self):
+        self.athlete_list = self.fetch_athletes()
+        self.athlete_dropdown.configure(values=self.athlete_list)
+        if self.athlete_list:
+            self.athlete_var.set(self.athlete_list[0])
 
     def fetch_data(self):
         try:
