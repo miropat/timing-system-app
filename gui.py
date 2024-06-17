@@ -5,11 +5,12 @@ import sqlite3
 from datetime import datetime
 from database import setup_database
 import winsound
+from tkinter import messagebox, simpledialog
 
 class ArduinoApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Arduino Data Viewer")
+        self.root.title("MPerformance timing")
 
 
         self.connection_status = ctk.StringVar()  # Initialize connection_status here
@@ -78,9 +79,6 @@ class ArduinoApp:
         self.data_viewer.configure(yscrollcommand=self.scrollbar.set)
 
         # Add input field and buttons for athlete management
-        self.new_athlete_var = ctk.StringVar()
-        self.new_athlete_entry = ctk.CTkEntry(self.frame, textvariable=self.new_athlete_var, placeholder_text="Enter Athlete Name")
-        self.new_athlete_entry.pack(pady=5)
 
         self.add_athlete_button = ctk.CTkButton(self.frame, text="Add Athlete", command=self.add_athlete)
         self.add_athlete_button.pack(pady=5)
@@ -89,7 +87,7 @@ class ArduinoApp:
         self.edit_athlete_button.pack(pady=5)
 
         self.delete_athlete_button = ctk.CTkButton(self.frame, text="Delete Athlete", command=self.delete_athlete)
-        self.delete_athlete_button.pack(pady=5)  
+        self.delete_athlete_button.pack(pady=5)
 
     def setup_serial(self):
         try:
@@ -200,7 +198,7 @@ class ArduinoApp:
 
 
     def add_athlete(self):
-        new_athlete = self.new_athlete_var.get()
+        new_athlete = simpledialog.askstring("Add Athlete", "Enter new athlete name:")
         if new_athlete:
             conn = sqlite3.connect('timing_data.db')
             c = conn.cursor()
@@ -208,29 +206,30 @@ class ArduinoApp:
             conn.commit()
             conn.close()
             self.refresh_athlete_list()
-            self.new_athlete_var.set("")
 
     def edit_athlete(self):
         selected_athlete = self.athlete_var.get()
-        new_name = self.new_athlete_var.get()
-        if selected_athlete and new_name:
-            conn = sqlite3.connect('timing_data.db')
-            c = conn.cursor()
-            c.execute('UPDATE athletes SET name = ? WHERE name = ?', (new_name, selected_athlete))
-            conn.commit()
-            conn.close()
-            self.refresh_athlete_list()
-            self.new_athlete_var.set("")
+        if selected_athlete:
+            new_name = simpledialog.askstring("Edit Athlete", "Enter new name:", initialvalue=selected_athlete)
+            if new_name:
+                conn = sqlite3.connect('timing_data.db')
+                c = conn.cursor()
+                c.execute('UPDATE athletes SET name = ? WHERE name = ?', (new_name, selected_athlete))
+                conn.commit()
+                conn.close()
+                self.refresh_athlete_list()
 
     def delete_athlete(self):
         selected_athlete = self.athlete_var.get()
         if selected_athlete:
-            conn = sqlite3.connect('timing_data.db')
-            c = conn.cursor()
-            c.execute('DELETE FROM athletes WHERE name = ?', (selected_athlete,))
-            conn.commit()
-            conn.close()
-            self.refresh_athlete_list()
+            confirm = messagebox.askyesno("Delete Athlete", f"Are you sure you want to delete '{selected_athlete}'?")
+            if confirm:
+                conn = sqlite3.connect('timing_data.db')
+                c = conn.cursor()
+                c.execute('DELETE FROM athletes WHERE name = ?', (selected_athlete,))
+                conn.commit()
+                conn.close()
+                self.refresh_athlete_list()
 
     def refresh_athlete_list(self):
         self.athlete_list = self.fetch_athletes()
