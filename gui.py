@@ -59,6 +59,19 @@ class ArduinoApp:
         self.athlete_dropdown.pack(pady=10)
         
 
+
+        # Add label and dropdown menu for gate length selection
+        self.gate_length_label = ctk.CTkLabel(self.frame, text="Select Gate Length:")
+        self.gate_length_label.pack(pady=10)
+
+        self.gate_length_var = ctk.StringVar()
+        self.gate_length_options = ["10m", "20m", "30m"]
+        self.gate_length_var.set(self.gate_length_options[0])  # Default to 10m
+
+        self.gate_length_dropdown = ctk.CTkOptionMenu(self.frame, variable=self.gate_length_var, values=self.gate_length_options)
+        self.gate_length_dropdown.pack(pady=10)
+
+        #Start command once the gates are aligned
         self.ready_button = ctk.CTkButton(self.frame, text="Start", command=self.send_ready_signal)
         self.ready_button.pack(pady=10)
 
@@ -148,6 +161,8 @@ class ArduinoApp:
 
         if valid_data:
             selected_athlete = self.athlete_var.get()  # Get the selected athlete from the dropdown
+            selected_gate_length = self.gate_length_var.get()  # Get the selected gate length from the dropdown
+
             try:
                 conn = sqlite3.connect('timing_data.db')
                 c = conn.cursor()
@@ -163,10 +178,10 @@ class ArduinoApp:
                     athlete_id = c.lastrowid
 
             # Insert timing data with athlete_id
-                c.execute('CREATE TABLE IF NOT EXISTS timings (id INTEGER PRIMARY KEY, athlete_id INTEGER, duration REAL, timestamp TEXT)')
+                c.execute('CREATE TABLE IF NOT EXISTS timings (id INTEGER PRIMARY KEY, athlete_id INTEGER, duration REAL, timestamp TEXT, gate_length TEXT)')
                 for duration, timestamp in self.data:
-                    c.execute('INSERT INTO timings (athlete_id, duration, timestamp) VALUES (?, ?, ?)', (athlete_id, duration, timestamp))
-                    print(f"Inserted to DB: Athlete ID={athlete_id}, Duration={duration}, Timestamp={timestamp}")
+                    c.execute('INSERT INTO timings (athlete_id, duration, timestamp) VALUES (?, ?, ?)', (athlete_id, duration, timestamp, selected_gate_length))
+                    print(f"Inserted to DB: Athlete ID={athlete_id}, Duration={duration}, Timestamp={timestamp}, Gate Length={selected_gate_length}")
 
 
                 conn.commit()
