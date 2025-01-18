@@ -6,6 +6,15 @@ from datetime import datetime
 from database import setup_database
 import winsound
 from tkinter import messagebox, simpledialog
+import socket
+
+
+#testing purposes, using this PI server to send data to the GUI
+PI_IP = "192.168.3.120"
+PORT = 65432
+
+COM_PORT = "COM5"
+BAUD_RATE = 9600
 
 class ArduinoApp:
     def __init__(self, root):
@@ -17,15 +26,21 @@ class ArduinoApp:
         self.setup_gui()
 
         self.setup_serial()
+        self.setup_socket()
+
         setup_database()
         self.fetch_athletes()  # Fetch athletes after setting up the GUI
 
-        self.root.bind("<space>", self.ready_to_start)
+
 
         self.data = []
-        self.thread = threading.Thread(target=self.read_from_serial)
+        self.thread = threading.Thread(target=self.read_data)
         self.thread.daemon = True
         self.thread.start()
+        self.data_viewer = ctk.CTkTextbox(self.frame, height=20, width=150)
+
+        self.ser 
+        self.pi_socket 
 
 
     def setup_gui(self):
@@ -41,14 +56,29 @@ class ArduinoApp:
         self.connection_status_label = ctk.CTkLabel(self.frame, textvariable=self.connection_status)
         self.connection_status_label.pack(pady=10)
 
+        # Mode selection
+        self.mode_label = ctk.CTkLabel(self.frame, text="Select timing Mode:")
+        self.mode_label.pack(pady=10)
+
+        self.mode_var = ctk.StringVar(value="Flying Sprint") #Default mode
+        self.mode_flying  = ctk.CTkRadioButton(self.frame, text="Flying Sprint", variable=self.mode_var, value="Flying Sprint")
+        self.mode_flying.pack(pady=5)
+        self.mode_start = ctk.CTkRadioButton(self.frame, text="Start", variable=self.mode_var, value="Start")
+        self.mode_start.pack(pady=5)
+
+        
+
+
+
         # Add a label and dropdown menu for athlete selection
         self.athlete_label = ctk.CTkLabel(self.frame, text="Select Athlete:")
         self.athlete_label.pack(pady=10)
 
+        
+
         # Replace athlete_list with your list of athletes retrieved from the database
         self.athlete_var = ctk.StringVar()
         self.athlete_list = self.fetch_athletes()  # Fetch athletes from database
-        print(f"Athlete List: {self.athlete_list}")
 
         
         if self.athlete_list:
@@ -71,8 +101,9 @@ class ArduinoApp:
         self.gate_length_dropdown = ctk.CTkOptionMenu(self.frame, variable=self.gate_length_var, values=self.gate_length_options)
         self.gate_length_dropdown.pack(pady=10)
 
+
         #Start command once the gates are aligned
-        self.ready_button = ctk.CTkButton(self.frame, text="Start", command=self.send_ready_signal)
+        self.ready_button = ctk.CTkButton(self.frame, text="Start", command=self.send_ready_signal, state=ctk.DISABLED)
         self.ready_button.pack(pady=10)
 
         self.save_button = ctk.CTkButton(self.frame, text="Save to Database", command=self.save_to_db)
@@ -99,55 +130,117 @@ class ArduinoApp:
         self.delete_athlete_button = ctk.CTkButton(self.frame, text="Delete Athlete", command=self.delete_athlete)
         self.delete_athlete_button.pack(pady=10)
 
+
+
     def setup_serial(self):
+        self.connection_status.set("disconnected")
+        self.ready_button.configure(state=ctk.DISABLED)
+
         try:
-            self.ser = serial.Serial('COM5', 9600, timeout=1)
-            self.connection_status.set("Connected to Arduino")
+            self.ser = serial.Serial(COM_PORT, BAUD_RATE, timeout=1)
+            self.connection_status.set("Connected to Arduino/ESP32")
+            self.ready_button.configure(state=ctk.NORMAL)
+
         except serial.SerialException as e:
             print(f"Error: {e}")
-            self.label.configure(text=f"Error: {e}")
+            #self.label.configure(text=f"Error: {e}")
             self.ser = None
-            self.ready_button.configure(state=ctk.DISABLED)
+        
 
 
-    def ready_to_start(self, event=None):
-        self.send_ready_signal()
+    def setup_socket(self):
+        self.connection_status.set("disconnected")
+        self.ready_button.configure(state=ctk.DISABLED)
 
-    def send_ready_signal(self): #Works as a reset signal aswell
-        if self.ser:
-            self.ser.write(b'R')
-            print("Sent ready/reset signal to Arduino")
-        else:
-            print("Error: Serial connection not established")
-            self.label.configure(text="Error: Serial connection not established")
+        try:
+            self.pi_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.pi_socket.connect((PI_IP, PORT))
+            self.connection_status.set("Connected to Raspberry Pi server")
+            self.pi_socket.send("connecting from client".encode())
+            self.ready_button.configure(state=ctk.NORMAL)
+            print("Sock: Connected to Raspberry Pi server")
+        except socket.error as e:
+            print(f"Failed to connect to server. Error: {e}")
+            self.label.configure(text=f"Error: {e}")
+            self.pi_socket = None
+
+ 
 
 
-
-    def read_from_serial(self):
-        while True:
+    def send_ready_signal(self):
+        def delayed_send():
             if self.ser and self.ser.is_open:
                 try:
+                    self.ser.write(b"START\n")
+                    print("Start signal sent to Arduino/ESP32")
+                except serial.SerialException as e:
+                    print(f"SER: Error sending start signal: {e}")
+                    self.label.configure(text=f"Error sending start signal: {e}")
+
+            elif self.pi_socket:
+                try:
+                    if not self.pi_socket:
+                        raise ValueError("Socket is not initialized")
+                    self.pi_socket.send("start".encode())
+                    print("Connection signal sent to Raspberry Pi server")
+                except Exception as e:
+                    print(f"SER:Error sending start signal: {e}")
+                    self.label.configure(text=f"Error sending start signal: {e}")
+            else:
+                print("Sending did not work")
+                self.label.configure(text="Sending did not work")     
+
+        self.frame.after(500, delayed_send)
+
+    def read_data(self):    
+        if self.ser and self.ser.is_open:
+            self.read_from_serial()
+        elif self.pi_socket:
+            self.read_from_network()
+        else:
+            print("No connection to read from")
+
+    def read_from_serial(self):
+            try:
+                while True:
                     line = self.ser.readline().decode('utf-8').rstrip()
                     if line:
+                        self.process_data(line)
                         print(f"Received line: {line}")
                         timestamp = datetime.now().strftime('%Y-%m-%d ')
                         self.root.after(0, self.update_gui, line, timestamp)
-                        if "sec" in line:
-                            try:
-                                duration_str = line.split(" ")[0]
-                                duration = float(duration_str)
-                                self.data.append((duration, timestamp))
-                                print(f"Appended to data: Duration={duration}, Timestamp={timestamp}")
-                                self.play_beep()
-                            except ValueError:
-                                print(f"Invalid duration value: {duration_str}")
-                        elif "Gate passed" in line:
-                            self.play_beep()
-                except Exception as e:
-                    print(f"Error reading from serial: {e}")
-            else:
-                print("Serial port is not open or no data available")
-                break
+                        
+            except Exception as e:
+                print(f"Error reading from serial: {e}")
+
+    def read_from_network(self):
+        while True:
+            try:
+                data = self.pi_socket.recv(1024).decode()
+                if data:
+                    
+                    self.process_data(data)
+            except Exception as e:
+                print(f"Error reading from network: {e}")    
+
+    def process_data(self, data):
+        print(f"Received data: {data}")
+        timestamp = datetime.now().strftime('%Y-%m-%d ')
+        self.root.after(0, self.update_gui, data, timestamp)
+
+        if "sec" in data:
+            try:
+                duration_str = data.split(" ")[0]
+                duration = float(duration_str)
+                self.data.append((duration, timestamp))
+                print(f"Appended to data: Duration={duration}, Timestamp={timestamp}")
+                self.play_beep()
+            except ValueError:
+                print(f"Invalid duration value: {duration_str}")
+        elif "Gate passed" in data:
+            self.play_beep()
+
+    
 
     def update_gui(self, display_line, timestamp):
         self.label.configure(text=display_line)
